@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { FastForward, Loader2, Maximize, Minimize, Pause, Play, Rewind, Volume2, VolumeX } from 'lucide-react'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
@@ -38,6 +39,21 @@ const fmt = (t: number) => {
 
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 
+function IconBtn(props: { onClick: () => void; disabled?: boolean; label: string; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      disabled={props.disabled}
+      aria-label={props.label}
+      title={props.label}
+      className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-white transition hover:bg-white/15 active:bg-white/25 disabled:opacity-40"
+    >
+      {props.children}
+    </button>
+  )
+}
+
 export default function YouTubePlayer({ videoId }: { videoId: string }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -53,7 +69,7 @@ export default function YouTubePlayer({ videoId }: { videoId: string }) {
   const [rate, setRate] = useState(1)
   const [fs, setFs] = useState(false)
 
-  // ভিডিও শেষ হলে (বা শেষের ঠিক আগে) প্লেয়ার রিসেট করি, যাতে YouTube-এর end screen / suggested video না আসে
+  // ভিডিও শেষ হলে প্লেয়ার রিসেট করি
   const finish = useCallback(
     (p: any) => {
       try {
@@ -111,7 +127,6 @@ export default function YouTubePlayer({ videoId }: { videoId: string }) {
     }
   }, [videoId, finish])
 
-  // সময় আপডেট + শেষ হওয়ার আগেই end screen আটকানো
   useEffect(() => {
     if (!ready) return
     const t = setInterval(() => {
@@ -185,7 +200,6 @@ export default function YouTubePlayer({ videoId }: { videoId: string }) {
     return () => document.removeEventListener('fullscreenchange', onFs)
   }, [])
 
-  // কীবোর্ড শর্টকাট
   useEffect(() => {
     if (!ready) return
     const onKey = (e: KeyboardEvent) => {
@@ -241,24 +255,49 @@ export default function YouTubePlayer({ videoId }: { videoId: string }) {
     seeking.current = false
   }
 
+  // স্ক্রিনের বাম বা ডান পাশে ডাবল ক্লিক হ্যান্ডলার (১০ সেকেন্ড স্কিপ করার জন্য)
+  const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const clickX = e.clientX - rect.left
+    const middle = rect.width / 2
+
+    if (clickX < middle) {
+      seekBy(-10) // বামে ডাবল ক্লিক: ১০ সেকেন্ড পেছনে
+    } else {
+      seekBy(10) // ডানে ডাবল ক্লিক: ১০ সেকেন্ড সামনে
+    }
+  }
+
   return (
-    <div className="player-wrap" ref={wrapRef}>
-      <div className="player-box">
-        <div ref={hostRef} className="player-host" />
-        {/* YouTube UI-তে ক্লিক আটকাতে স্বচ্ছ শিল্ড: শুধু আমাদের কন্ট্রোল কাজ করবে */}
-        <div className="player-shield" onClick={toggle}>
+    <div className="flex flex-col w-full">
+      {/* ১. ভিডিও ফ্রেম: একদম ক্লিন এবং শুধুমাত্র ভিডিও প্লেয়ার থাকবে */}
+      <div
+        ref={wrapRef}
+        className="relative aspect-[9/16] max-h-dvh w-full overflow-hidden bg-black sm:max-h-none sm:rounded-2xl [&:fullscreen]:aspect-auto [&:fullscreen]:max-h-none [&:fullscreen]:rounded-none"
+      >
+        <div
+          ref={hostRef}
+          className="absolute inset-0 [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:h-full [&_iframe]:w-full [&_iframe]:border-0"
+        />
+
+        {/* স্বচ্ছ শিল্ড যা ভিডিওর ওপর ক্লিক ও ডাবল ক্লিক হ্যান্ডেল করবে */}
+        <div
+          className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center"
+          onClick={toggle}
+          onDoubleClick={handleDoubleClick}
+        >
+          {!ready && <Loader2 className="size-8 animate-spin text-white/70" />}
           {ready && !playing && (
-            <button className="big-play" aria-label="চালু করুন">
-              ▶
-            </button>
+            <span className="grid size-16 place-items-center rounded-full bg-black/55 ring-2 ring-white/80 backdrop-blur-sm">
+              <Play className="size-8 fill-white text-white" />
+            </span>
           )}
-          {!ready && <span className="loading">লোড হচ্ছে…</span>}
         </div>
       </div>
 
-      <div className="controls">
+      {/* ২. কন্ট্রোলার ও সিক বার: সম্পূর্ণ ভিডিওর বাইরে নিচের অংশে সাজানো */}
+      <div className="mt-3 rounded-xl bg-neutral-900/90 p-3 text-white backdrop-blur-md">
         <input
-          className="seek"
           type="range"
           min={0}
           max={dur || 0}
@@ -266,6 +305,7 @@ export default function YouTubePlayer({ videoId }: { videoId: string }) {
           value={Math.min(cur, dur || 0)}
           aria-label="সিক বার"
           disabled={!ready}
+          className="mb-2 block h-2 w-full cursor-pointer accent-blue-500 disabled:opacity-50"
           onChange={(e) => {
             seeking.current = true
             setCur(Number(e.target.value))
@@ -273,47 +313,53 @@ export default function YouTubePlayer({ videoId }: { videoId: string }) {
           onPointerUp={(e) => commitSeek(Number((e.target as HTMLInputElement).value))}
           onKeyUp={(e) => commitSeek(Number((e.target as HTMLInputElement).value))}
         />
-        <div className="ctrl-row">
-          <button onClick={toggle} disabled={!ready} aria-label={playing ? 'পজ' : 'প্লে'}>
-            {playing ? '⏸' : '▶'}
-          </button>
-          <button onClick={() => seekBy(-10)} disabled={!ready} aria-label="১০ সেকেন্ড পেছনে">
-            ⟲ 10
-          </button>
-          <button onClick={() => seekBy(10)} disabled={!ready} aria-label="১০ সেকেন্ড সামনে">
-            10 ⟳
-          </button>
-          <span className="time">
-            {fmt(cur)} / {fmt(dur)}
-          </span>
-          <span className="spacer" />
-          <button onClick={toggleMute} disabled={!ready} aria-label="মিউট">
-            {muted || vol === 0 ? '🔇' : '🔊'}
-          </button>
-          <input
-            className="vol"
-            type="range"
-            min={0}
-            max={100}
-            value={muted ? 0 : vol}
-            aria-label="ভলিউম"
-            onChange={(e) => changeVol(Number(e.target.value))}
-          />
-          <select
-            value={rate}
-            onChange={(e) => changeRate(Number(e.target.value))}
-            aria-label="স্পিড"
-            disabled={!ready}
-          >
-            {RATES.map((r) => (
-              <option key={r} value={r}>
-                {r}x
-              </option>
-            ))}
-          </select>
-          <button onClick={toggleFs} aria-label="ফুলস্ক্রিন">
-            {fs ? '🡼' : '⛶'}
-          </button>
+        
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1">
+            <IconBtn onClick={toggle} disabled={!ready} label={playing ? 'পজ' : 'প্লে'}>
+              {playing ? <Pause className="size-4 fill-white" /> : <Play className="size-4 fill-white" />}
+            </IconBtn>
+            <IconBtn onClick={() => seekBy(-10)} disabled={!ready} label="১০ সেকেন্ড পেছনে">
+              <Rewind className="size-4" />
+            </IconBtn>
+            <IconBtn onClick={() => seekBy(10)} disabled={!ready} label="১০ সেকেন্ড সামনে">
+              <FastForward className="size-4" />
+            </IconBtn>
+            <span className="ml-1 text-xs tabular-nums text-white/80">
+              {fmt(cur)} / {fmt(dur)}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <IconBtn onClick={toggleMute} disabled={!ready} label="মিউট">
+              {muted || vol === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+            </IconBtn>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={muted ? 0 : vol}
+              aria-label="ভলিউম"
+              onChange={(e) => changeVol(Number(e.target.value))}
+              className="mr-1 hidden h-1.5 w-16 cursor-pointer accent-blue-500 sm:block"
+            />
+            <select
+              value={rate}
+              onChange={(e) => changeRate(Number(e.target.value))}
+              disabled={!ready}
+              aria-label="স্পিড"
+              className="rounded-md bg-white/10 px-1.5 py-1 text-xs font-medium text-white outline-none [&>option]:text-black"
+            >
+              {RATES.map((r) => (
+                <option key={r} value={r}>
+                  {r}x
+                </option>
+              ))}
+            </select>
+            <IconBtn onClick={toggleFs} label="ফুলস্ক্রিন">
+              {fs ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
+            </IconBtn>
+          </div>
         </div>
       </div>
     </div>

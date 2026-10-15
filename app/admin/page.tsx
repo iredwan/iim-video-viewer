@@ -2,48 +2,39 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { ExternalLink, FolderPlus, Loader2, LogOut, Pencil, Plus, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { extractYouTubeId } from '@/lib/youtube'
-import { compressImage } from '@/lib/image'
-
-type Img = { id: string; url: string; position: number }
-type Batch = { id: string; name: string; youtube_id: string; batch_images: Img[] }
-
-async function uploadImages(files: File[], onProgress: (n: number) => void): Promise<string[]> {
-  const urls: string[] = []
-  for (let i = 0; i < files.length; i++) {
-    const f = await compressImage(files[i])
-    const fd = new FormData()
-    fd.append('image', f)
-    const res = await fetch('/api/upload', { method: 'POST', body: fd })
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(json.error || 'আপলোড ব্যর্থ')
-    urls.push(json.url)
-    onProgress(i + 1)
-  }
-  return urls
-}
+import AddVideoModal from '@/components/AddVideoModal'
+import AdminVideoItem from '@/components/AdminVideoItem'
+import { btnGhost, btnPrimary, iconBtn, inputCls } from '@/lib/ui'
+import type { BatchRow } from '@/lib/types'
 
 export default function Admin() {
   const router = useRouter()
   const [supabase] = useState(() => createClient())
-  const [batches, setBatches] = useState<Batch[]>([])
+  const [batches, setBatches] = useState<BatchRow[]>([])
   const [loading, setLoading] = useState(true)
-
-  const [name, setName] = useState('')
-  const [link, setLink] = useState('')
-  const [files, setFiles] = useState<File[]>([])
-  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [modal, setModal] = useState(false)
+  const [newBatch, setNewBatch] = useState('')
+  const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [progress, setProgress] = useState('')
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('batches')
-      .select('id, name, youtube_id, batch_images(id, url, position)')
+      .select('id, name, videos(id, slug, youtube_id, title, created_at, video_images(id, url, position))')
       .order('created_at', { ascending: true })
-    if (error) setMsg({ type: 'err', text: error.message })
-    else setBatches((data ?? []) as Batch[])
+    if (error) setError(error.message)
+    else {
+      setError('')
+      const rows = (data ?? []) as unknown as BatchRow[]
+      setBatches(
+        rows.map((b) => ({
+          ...b,
+          videos: [...b.videos].sort((x, y) => x.created_at.localeCompare(y.created_at)),
+        }))
+      )
+    }
     setLoading(false)
   }, [supabase])
 
@@ -57,201 +48,132 @@ export default function Admin() {
     router.refresh()
   }
 
-  async function create(e: React.FormEvent) {
-    e.preventDefault()
-    setMsg(null)
-    const vid = extractYouTubeId(link)
-    if (!vid) return setMsg({ type: 'err', text: 'ইউটিউব লিংকটি সঠিক নয়' })
+  async function run(fn: () => Promise<void>) {
     setBusy(true)
+    setError('')
     try {
-      const urls = await uploadImages(files, (n) => setProgress(`ছবি আপলোড: ${n}/${files.length}`))
-      const { data: b, error } = await supabase
-        .from('batches')
-        .insert({ name: name.trim(), youtube_id: vid })
-        .select('id')
-        .single()
-      if (error) throw new Error(error.message)
-      if (urls.length) {
-        const { error: e2 } = await supabase
-          .from('batch_images')
-          .insert(urls.map((url, i) => ({ batch_id: b.id, url, position: i })))
-        if (e2) throw new Error(e2.message)
-      }
-      setName('')
-      setLink('')
-      setFiles([])
-      ;(document.getElementById('new-files') as HTMLInputElement).value = ''
-      setMsg({ type: 'ok', text: 'ব্যাচ যোগ হয়েছে' })
+      await fn()
       await load()
-    } catch (err) {
-      setMsg({ type: 'err', text: (err as Error).message })
+    } catch (e) {
+      setError((e as Error).message)
     } finally {
       setBusy(false)
-      setProgress('')
     }
   }
 
+  const addBatch = (e: React.FormEvent) => {
+    e.preventDefault()
+    const name = newBatch.trim()
+    if (!name) return
+    run(async () => {
+      const { error } = await supabase.from('batches').insert({ name })
+      if (error) throw new Error(error.message)
+      setNewBatch('')
+    })
+  }
+
+  const renameBatch = (b: BatchRow) => {
+    const name = window.prompt('ব্যাচের নতুন নাম', b.name)?.trim()
+    if (!name || name === b.name) return
+    run(async () => {
+      const { error } = await supabase.from('batches').update({ name }).eq('id', b.id)
+      if (error) throw new Error(error.message)
+    })
+  }
+
+  const deleteBatch = (b: BatchRow) => {
+    if (!confirm(`"${b.name}" ব্যাচ ও এর ${b.videos.length} টি ভিডিও মুছবেন?`)) return
+    run(async () => {
+      const { error } = await supabase.from('batches').delete().eq('id', b.id)
+      if (error) throw new Error(error.message)
+    })
+  }
+
   return (
-    <main className="container">
-      <header className="bar">
-        <h1>অ্যাডমিন প্যানেল</h1>
-        <div className="row">
-          <a href="/" target="_blank" rel="noreferrer">
-            পাবলিক পেজ ↗
+    <main className="mx-auto w-full max-w-3xl px-4 py-6">
+      <header className="mb-6 flex items-center justify-between gap-3">
+        <h1 className="text-xl font-bold sm:text-2xl">অ্যাডমিন প্যানেল</h1>
+        <div className="flex gap-2">
+          <a href="/" target="_blank" rel="noreferrer" className={btnGhost}>
+            <ExternalLink className="size-4" />
+            <span className="hidden sm:inline">পাবলিক পেজ</span>
           </a>
-          <button onClick={logout}>লগআউট</button>
+          <button onClick={logout} className={btnGhost} aria-label="লগআউট">
+            <LogOut className="size-4" />
+            <span className="hidden sm:inline">লগআউট</span>
+          </button>
         </div>
       </header>
 
-      <form onSubmit={create} className="card stack">
-        <h2>নতুন ব্যাচ</h2>
-        <label>
-          ব্যাচের নাম
-          <input required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label>
-          ইউটিউব ভিডিও লিংক
-          <input
-            required
-            placeholder="https://www.youtube.com/watch?v=..."
-            value={link}
-            onChange={(e) => setLink(e.target.value)}
-          />
-        </label>
-        <label>
-          ছবি (একাধিক নেওয়া যাবে)
-          <input
-            id="new-files"
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-          />
-        </label>
-        {msg && <p className={msg.type === 'ok' ? 'ok' : 'error'}>{msg.text}</p>}
-        {progress && <p className="hint">{progress}</p>}
-        <button className="primary" disabled={busy}>
-          {busy ? 'অপেক্ষা করুন…' : 'ব্যাচ সংরক্ষণ করুন'}
+      <button
+        onClick={() => setModal(true)}
+        disabled={batches.length === 0}
+        className={`${btnPrimary} w-full py-3.5 text-base`}
+      >
+        <Plus className="size-5" />
+        নতুন ভিডিও যুক্ত করুন
+      </button>
+      {!loading && batches.length === 0 && (
+        <p className="mt-2 text-center text-sm text-neutral-400">ভিডিও যুক্ত করার আগে নিচে একটি ব্যাচ তৈরি করুন।</p>
+      )}
+
+      <form onSubmit={addBatch} className="mt-4 flex gap-2">
+        <input
+          value={newBatch}
+          onChange={(e) => setNewBatch(e.target.value)}
+          placeholder="নতুন ব্যাচের নাম"
+          maxLength={120}
+          className={inputCls}
+        />
+        <button className={`${btnGhost} shrink-0`} disabled={busy || !newBatch.trim()}>
+          <FolderPlus className="size-4" />
+          <span className="hidden sm:inline">ব্যাচ তৈরি</span>
         </button>
       </form>
 
-      <h2>সব ব্যাচ</h2>
-      {loading ? (
-        <p>লোড হচ্ছে…</p>
-      ) : batches.length === 0 ? (
-        <p className="empty">কোনো ব্যাচ নেই</p>
-      ) : (
-        batches.map((b) => <BatchCard key={b.id} batch={b} onChange={load} />)
+      {error && <p className="mt-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-400">{error}</p>}
+
+      <div className="mt-8 space-y-8">
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="size-6 animate-spin text-neutral-400" />
+          </div>
+        ) : (
+          batches.map((b) => (
+            <section key={b.id}>
+              <div className="mb-3 flex items-center gap-2">
+                <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{b.name}</h2>
+                <span className="text-xs text-neutral-500">{b.videos.length} ভিডিও</span>
+                <button onClick={() => renameBatch(b)} className={iconBtn} aria-label="নাম বদলান" title="নাম বদলান">
+                  <Pencil className="size-4" />
+                </button>
+                <button onClick={() => deleteBatch(b)} className={iconBtn} aria-label="ব্যাচ মুছুন" title="ব্যাচ মুছুন">
+                  <Trash2 className="size-4 text-red-400" />
+                </button>
+              </div>
+              {b.videos.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-white/10 p-4 text-center text-sm text-neutral-500">
+                  এই ব্যাচে কোনো ভিডিও নেই
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {b.videos.map((v, i) => (
+                    <AdminVideoItem key={v.id} video={v} index={i} onChange={load} />
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))
+        )}
+      </div>
+
+      {modal && (
+        <AddVideoModal
+          batches={batches.map((b) => ({ id: b.id, name: b.name }))}
+          onClose={() => setModal(false)}
+          onAdded={load}
+        />
       )}
     </main>
-  )
-}
-
-function BatchCard({ batch, onChange }: { batch: Batch; onChange: () => Promise<void> }) {
-  const [supabase] = useState(() => createClient())
-  const [name, setName] = useState(batch.name)
-  const [link, setLink] = useState(`https://youtu.be/${batch.youtube_id}`)
-  const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState('')
-  const images = [...batch.batch_images].sort((a, b) => a.position - b.position)
-
-  async function run(fn: () => Promise<void>) {
-    setBusy(true)
-    setMsg('')
-    try {
-      await fn()
-      await onChange()
-    } catch (e) {
-      setMsg((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const save = () =>
-    run(async () => {
-      const vid = extractYouTubeId(link)
-      if (!vid) throw new Error('ইউটিউব লিংকটি সঠিক নয়')
-      const { error } = await supabase
-        .from('batches')
-        .update({ name: name.trim(), youtube_id: vid })
-        .eq('id', batch.id)
-      if (error) throw new Error(error.message)
-    })
-
-  const addImages = (list: File[]) =>
-    run(async () => {
-      if (!list.length) return
-      const urls = await uploadImages(list, (n) => setMsg(`আপলোড: ${n}/${list.length}`))
-      const start = images.length ? Math.max(...images.map((i) => i.position)) + 1 : 0
-      const { error } = await supabase
-        .from('batch_images')
-        .insert(urls.map((url, i) => ({ batch_id: batch.id, url, position: start + i })))
-      if (error) throw new Error(error.message)
-    })
-
-  const delImage = (id: string) =>
-    run(async () => {
-      if (!confirm('ছবিটি মুছবেন?')) return
-      const { error } = await supabase.from('batch_images').delete().eq('id', id)
-      if (error) throw new Error(error.message)
-    })
-
-  const delBatch = () =>
-    run(async () => {
-      if (!confirm(`"${batch.name}" ব্যাচ ও এর সব ছবি মুছবেন?`)) return
-      const { error } = await supabase.from('batches').delete().eq('id', batch.id)
-      if (error) throw new Error(error.message)
-    })
-
-  return (
-    <div className="card stack">
-      <div className="grid2">
-        <label>
-          নাম
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label>
-          ইউটিউব লিংক
-          <input value={link} onChange={(e) => setLink(e.target.value)} />
-        </label>
-      </div>
-
-      <div className="thumbs">
-        {images.map((img) => (
-          <div key={img.id} className="athumb">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={img.url} alt="" />
-            <button type="button" onClick={() => delImage(img.id)} disabled={busy} aria-label="ছবি মুছুন">
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div className="row wrap">
-        <label className="filebtn">
-          + ছবি যোগ করুন
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            disabled={busy}
-            onChange={(e) => {
-              addImages(Array.from(e.target.files ?? []))
-              e.target.value = ''
-            }}
-          />
-        </label>
-        <button className="primary" onClick={save} disabled={busy}>
-          সংরক্ষণ
-        </button>
-        <button className="danger" onClick={delBatch} disabled={busy}>
-          ব্যাচ মুছুন
-        </button>
-        {msg && <span className="hint">{msg}</span>}
-      </div>
-    </div>
   )
 }

@@ -18,3 +18,5 @@ export function extractYouTubeId(input: string): string | null {
     return null
   }
 }
+
+export const ytThumb = (id: string) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`

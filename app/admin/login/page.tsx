@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Loader2, LogIn } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { btnPrimary, inputCls } from '@/lib/ui'
 
 export default function Login() {
   const router = useRouter()
@@ -27,14 +29,21 @@ export default function Login() {
   }
 
   return (
-    <main className="container narrow">
-      <h1>অ্যাডমিন লগইন</h1>
-      <form onSubmit={submit} className="card stack">
-        <label>
+    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center px-4 py-10">
+      <h1 className="mb-6 text-center text-2xl font-bold">অ্যাডমিন লগইন</h1>
+      <form onSubmit={submit} className="space-y-4 rounded-2xl border border-white/10 bg-neutral-900 p-5">
+        <label className="block space-y-1.5 text-sm text-neutral-400">
           ইমেইল
-          <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={inputCls}
+          />
         </label>
-        <label>
+        <label className="block space-y-1.5 text-sm text-neutral-400">
           পাসওয়ার্ড
           <input
             type="password"
@@ -42,10 +51,12 @@ export default function Login() {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            className={inputCls}
           />
         </label>
-        {error && <p className="error">{error}</p>}
-        <button className="primary" disabled={busy}>
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <button className={`${btnPrimary} w-full`} disabled={busy}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <LogIn className="size-4" />}
           {busy ? 'অপেক্ষা করুন…' : 'লগইন'}
         </button>
       </form>
