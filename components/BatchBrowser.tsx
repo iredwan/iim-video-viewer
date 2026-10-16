@@ -58,9 +58,9 @@ export default function BatchBrowser({ batches }: { batches: BatchRow[] }) {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="ভিডিওর টাইটেল দিয়ে খুঁজুন..."
+          placeholder="ক্লাস দিয়ে খুঁজুন..."
           className={`${inputCls} pl-10`}
-          aria-label="ভিডিওর টাইটেল দিয়ে খুঁজুন"
+          aria-label="ক্লাস দিয়ে খুঁজুন"
         />
       </div>
 
@@ -71,10 +71,11 @@ export default function BatchBrowser({ batches }: { batches: BatchRow[] }) {
           {paginated.map((v, i) => (
             <li
               key={v.id}
-              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900 p-2.5 pr-3"
+              className="flex items-center gap-3 rounded-md border border-white/10 bg-neutral-900 p-1.5"
             >
               <Link href={`/v/${v.slug}`} className="group flex min-w-0 flex-1 items-center gap-3">
-                <span className="relative block aspect-[9/16] w-16 shrink-0 overflow-hidden rounded-xl bg-black">
+                {/* থাম্বনেল সাইজ ইউটিউবের স্ট্যান্ডার্ড 16:9 অনুপাতে পরিবর্তন করা হয়েছে */}
+                <span className="relative block aspect-video w-40 shrink-0 overflow-hidden rounded-md bg-black">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={ytThumb(v.youtube_id)} alt="" loading="lazy" className="size-full object-cover" />
                   <span className="absolute inset-0 grid place-items-center bg-black/25 transition group-hover:bg-black/10">
@@ -84,7 +85,8 @@ export default function BatchBrowser({ batches }: { batches: BatchRow[] }) {
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold break-words">{v.title?.trim() || `ভিডিও ${i + 1}`}</span>
                   <span className="mt-0.5 flex items-center gap-1 text-sm text-neutral-400">
-                    {v.batchName} • দেখুন <ChevronRight className="size-4" />
+                    {v.batchName} দেখুন 
+                    <ChevronRight className="size-4" />
                   </span>
                 </span>
               </Link>
