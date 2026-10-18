@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Check, Copy, ExternalLink, Pencil } from 'lucide-react'
 import { ytThumb } from '@/lib/youtube'
+import { ogShareUrl } from '@/lib/urls'
 import { iconBtn } from '@/lib/ui'
 import EditVideoModal from './EditVideoModal'
 import type { VideoRow } from '@/lib/types'
@@ -16,7 +17,7 @@ export default function AdminVideoItem({ video, index, onChange }: Props) {
   const images = [...(video.video_images ?? [])]
   const path = `/v/${video.slug}`
   // শেয়ার লিংক — OG প্রিভিউ (থাম্বনেইল + টাইটেল) দেখায়, খুললে আসল পেজে যায়
-  const shareUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/og?slug=${video.slug}`
+  const shareUrl = ogShareUrl(video.slug)
 
   async function copy() {
     try {
@@ -32,7 +33,7 @@ export default function AdminVideoItem({ video, index, onChange }: Props) {
     <li className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
       <div className="flex items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={ytThumb(video.youtube_id)} alt="" className="h-16 w-9 shrink-0 rounded-md bg-black object-cover" />
+        <img src={ytThumb(video.youtube_id)} alt="" className="aspect-video w-40 shrink-0 rounded-md bg-black object-cover" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{video.title?.trim() || `ভিডিও ${index + 1}`}</p>
           <p className="truncate text-xs text-neutral-400">{path}</p>

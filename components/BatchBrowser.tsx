@@ -74,7 +74,7 @@ export default function BatchBrowser({ batches }: { batches: BatchRow[] }) {
               className="flex items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900 p-2.5 pr-3"
             >
               <Link href={`/v/${v.slug}`} className="group flex min-w-0 flex-1 items-center gap-3">
-                <span className="relative block aspect-[9/16] w-16 shrink-0 overflow-hidden rounded-xl bg-black">
+                <span className="relative block aspect-video w-40 shrink-0 overflow-hidden rounded-md bg-black">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={ytThumb(v.youtube_id)} alt="" loading="lazy" className="size-full object-cover" />
                   <span className="absolute inset-0 grid place-items-center bg-black/25 transition group-hover:bg-black/10">

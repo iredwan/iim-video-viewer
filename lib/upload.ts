@@ -1,6 +1,5 @@
 import { compressImage } from './image'
-
-const FN_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/imgbb-upload`
+import { functionsBase } from './urls'
 
 export async function uploadImages(files: File[], onProgress: (n: number) => void): Promise<string[]> {
   const { createClient } = await import('./supabase/client')
@@ -14,7 +13,7 @@ export async function uploadImages(files: File[], onProgress: (n: number) => voi
     const f = await compressImage(files[i])
     const fd = new FormData()
     fd.append('image', f)
-    const res = await fetch(FN_URL, {
+    const res = await fetch(`${functionsBase}/imgbb-upload`, {
       method: 'POST',
       body: fd,
       headers: { Authorization: `Bearer ${token}` },
