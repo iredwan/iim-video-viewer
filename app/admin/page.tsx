@@ -12,12 +12,20 @@ import type { BatchRow } from '@/lib/types'
 export default function Admin() {
   const router = useRouter()
   const [supabase] = useState(() => createClient())
+  const [authed, setAuthed] = useState(false)
   const [batches, setBatches] = useState<BatchRow[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [newBatch, setNewBatch] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) router.replace('/admin/login')
+      else setAuthed(true)
+    })
+  }, [supabase, router])
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -39,13 +47,21 @@ export default function Admin() {
   }, [supabase])
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (authed) load()
+  }, [authed, load])
 
   async function logout() {
     await supabase.auth.signOut()
     router.replace('/admin/login')
     router.refresh()
+  }
+
+  if (!authed) {
+    return (
+      <main className="grid min-h-dvh place-items-center">
+        <Loader2 className="size-6 animate-spin text-neutral-400" />
+      </main>
+    )
   }
 
   async function run(fn: () => Promise<void>) {
