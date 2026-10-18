@@ -3,52 +3,36 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState, useDeferredValue } from 'react'
 import { ChevronRight, Play, Search } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 import { inputCls } from '@/lib/ui'
 import { ytThumb } from '@/lib/youtube'
 import type { BatchRow } from '@/lib/types'
 
 const PAGE_SIZE = 12
 
-export default function BatchBrowser() {
-  const [supabase] = useState(() => createClient())
-  const [batches, setBatches] = useState<BatchRow[] | null>(null)
-  const [batchFilter, setBatchFilter] = useState('')
+export default function BatchBrowser({ batches }: { batches: BatchRow[] }) {
   const [query, setQuery] = useState('')
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
   const deferredQuery = useDeferredValue(query)
 
-  useEffect(() => {
-    setBatchFilter(new URLSearchParams(window.location.search).get('batch') ?? '')
-    supabase
-      .from('batches')
-      .select('id, name, videos(id, slug, youtube_id, title, created_at)')
-      .order('created_at', { ascending: true })
-      .then(({ data }) => setBatches((data ?? []) as unknown as BatchRow[]))
-  }, [supabase])
-
   const videos = useMemo(
     () =>
-      (batches ?? [])
-        .flatMap((b) => b.videos.map((v) => ({ ...v, batchId: b.id, batchName: b.name })))
-        .sort((a, b) => b.created_at.localeCompare(a.created_at)),
+      batches
+        .flatMap((b) => b.videos.map((v) => ({ ...v, batchName: b.name })))
+        .sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [batches]
   )
 
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase()
-    return videos.filter(
-      (v) =>
-        (!batchFilter || v.batchId === batchFilter) &&
-        (!q || (v.title ?? '').toLowerCase().includes(q))
-    )
-  }, [videos, deferredQuery, batchFilter])
+    if (!q) return videos
+    return videos.filter((v) => (v.title ?? '').toLowerCase().includes(q))
+  }, [videos, deferredQuery])
 
   const paginated = useMemo(() => filtered.slice(0, displayCount), [filtered, displayCount])
 
   useEffect(() => {
     setDisplayCount(PAGE_SIZE)
-  }, [deferredQuery, batchFilter])
+  }, [deferredQuery])
 
   useEffect(() => {
     const onScroll = () => {
@@ -60,23 +44,9 @@ export default function BatchBrowser() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [filtered.length])
 
-  if (batches === null) {
-    return (
-      <div className="grid animate-pulse grid-cols-1 gap-3 md:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900 p-2.5">
-            <div className="aspect-[9/16] w-16 shrink-0 rounded-xl bg-neutral-800" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-3/4 rounded bg-neutral-800" />
-              <div className="h-3 w-1/2 rounded bg-neutral-800" />
-            </div>
-          </div>
-        ))}
-      </div>
-    )
+  if (!videos.length) {
+    return <p className="py-12 text-center text-neutral-400">এই ব্যাচে এখনও কোনো ভিডিও নেই।</p>
   }
-
-  if (!videos.length) return <p className="py-16 text-center text-neutral-400">এখনও কোনো ভিডিও নেই।</p>
 
   return (
     <>
