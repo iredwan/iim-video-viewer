@@ -1,15 +1,27 @@
 // Cloudflare Worker: শেয়ার লিংকের OG প্রিভিউ সার্ভার
-// রুট: /v/<slug>  → ক্রলারকে OG (টাইটেল + ইউটিউব থাম্বনেইল), মানুষকে মূল সাইটে রিডাইরেক্ট
+// রুট: /v/<slug>
+//   মানুষ (ক্লিক)          → ৩০২ রিডাইরেক্ট, সরাসরি মূল সাইটের ভিডিও পেজে
+//   শেয়ার-ক্রলার (OG পড়তে আসে) → ২০০ + শুধু OG মেটা (থাম্বনেইল + টাইটেল)
 // অন্য সব পাথ মূল সাইটে রিডাইরেক্ট
 // Deploy: Cloudflare Dashboard → Workers → Create → এই কোড পেস্ট → ভেরিয়েবল সেট:
 //   SUPABASE_URL, SUPABASE_ANON_KEY, SITE_URL (ঐচ্ছিক, ডিফল্ট iim-recording-class.web.app)
 
 const SLUG_RE = /^[a-z0-9]{6,16}$/
 
+// রিয়েল ব্রাউজার (in-app সহ) প্রায় সবার UA-তে Mozilla থাকে;
+// শেয়ার-প্রিভিউ ক্রলাররা নিজস্ব টোকেন নিয়ে আসে
+function isCrawler(ua) {
+  if (!ua) return false
+  if (/facebookexternalhit/i.test(ua)) return true
+  if (/WhatsApp/i.test(ua) && !/Mozilla/i.test(ua)) return true
+  return /telegrambot|twitterbot|discordbot|slackbot|linkedinbot|applebot/i.test(ua)
+}
+
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+// শুধু ক্রলারের জন্য — কোনো refresh/redirect নেই, নাহলে FB og:url ফলো করে অন্য পেজের OG নেয়
 function htmlPage(title, image, target) {
   const html = `<!doctype html>
 <html lang="bn">
@@ -27,12 +39,9 @@ function htmlPage(title, image, target) {
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${esc(title)}">
 <meta name="twitter:image" content="${esc(image)}">
-<link rel="canonical" href="${esc(target)}">
-<meta http-equiv="refresh" content="0;url=${esc(target)}">
-<script>location.replace(${JSON.stringify(target)})</script>
 </head>
-<body style="background:#0a0a0a;color:#e5e5e5;font-family:sans-serif;display:grid;place-items:center;min-height:100vh;text-align:center">
-<p><a href="${esc(target)}" style="color:#38bdf8">ক্লাস রেকডিং দেখুন →</a></p>
+<body>
+<p><a href="${esc(target)}">${esc(title)}</a></p>
 </body>
 </html>`
   return new Response(html, {
@@ -50,6 +59,11 @@ export default {
     if (!m) return Response.redirect(site + url.pathname + url.search, 302)
 
     const slug = m[1]
+    const ua = request.headers.get('user-agent') || ''
+
+    // মানুষ → সরাসরি আসল পেজ (in-app ব্রাউজারে মাঝের পেজ কখনো দেখা যাবে না)
+    if (!isCrawler(ua)) return Response.redirect(`${site}/v/${slug}`, 302)
+
     try {
       const r = await fetch(
         `${env.SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/videos?slug=eq.${encodeURIComponent(slug)}&select=youtube_id,title,batches(name)`,
