@@ -17,7 +17,9 @@ export default function AdminVideoItem({ video, index, onChange }: Props) {
   const images = [...(video.video_images ?? [])]
   const path = `/v/${video.slug}`
   // শেয়ার লিংক — OG প্রিভিউ (থাম্বনেইল + টাইটেল) দেখায়, খুললে আসল পেজে যায়
-  const shareUrl = ogShareUrl(video.slug)
+  // NEXT_PUBLIC_SHARE_BASE = Cloudflare Worker-এর ঠিকানা (যেমন https://share-og.example.workers.dev)
+  const shareBase = (process.env.NEXT_PUBLIC_SHARE_BASE ?? '').replace(/\/+$/, '')
+  const shareUrl = shareBase ? `${shareBase}/v/${video.slug}` : ogShareUrl(video.slug)
 
   async function copy() {
     try {

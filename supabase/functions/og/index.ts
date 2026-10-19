@@ -39,7 +39,13 @@ function htmlPage(title: string, image: string, target: string, status = 200) {
 </html>`
   return new Response(html, {
     status,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'public, max-age=300',
+      // Supabase গেটওয়ের ডিফল্ট "CSP: sandbox" রেসপন্সকে text/plain বানিয়ে FB/WhatsApp-এর OG ভেঙে দেয়;
+      // নিজের CSP (sandbox ছাড়া) সেট করলে সেটা ওভাররাইড হয়
+      'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src *",
+    },
   })
 }
 
