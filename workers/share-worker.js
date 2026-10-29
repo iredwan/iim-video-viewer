@@ -125,8 +125,8 @@ export default {
     const selfUrl = `${url.origin}/v/${slug}`
     const ua = request.headers.get('user-agent') || ''
 
-    // মানুষ → সরাসরি আসল পেজে
-    if (!isCrawler(ua)) return Response.redirect(target, 302)
+    // মানুষ → সরাসরি আসল পেজে (key সহ পুরো কুয়েরি প্রিজার্ভ — নইলে ভিডিও খুলবে না)
+    if (!isCrawler(ua)) return Response.redirect(target + url.search, 302)
 
     // ক্রলারের জন্য ক্যাশ করা HTML থাকলে সাথে সাথে দিন
     const cache = caches.default
@@ -161,7 +161,7 @@ export default {
       }
 
       const v = await r.json()
-      if (!v || !v.youtube_id) return Response.redirect(target, 302)
+      if (!v || !v.youtube_id) return Response.redirect(target + url.search, 302)
 
       const title = `${v.class_no ? `ক্লাস ${v.class_no} — ` : ''}${(v.title || '').trim() || 'ভিডিও'} | ${SITE_NAME}`
       const image = `${url.origin}/img/${v.youtube_id}.jpg`

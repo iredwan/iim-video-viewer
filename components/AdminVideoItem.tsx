@@ -17,9 +17,14 @@ export default function AdminVideoItem({ video, onChange }: Props) {
   const path = `/v/${video.slug}`
   const pathWithKey = `${path}?key=${encodeURIComponent(video.access_key)}`
 
+  // শেয়ার লিংক: Worker ডোমেইন (নিচে explain) — ক্রলার পায় ভিডিওর থাম্বনেইল OG, মানুষ খুললে আসল ভিডিও
+  const shareBase = (process.env.NEXT_PUBLIC_SHARE_BASE ?? '').replace(/\/+$/, '')
+
   // গ্রুপে শেয়ার করার লিংক: ওই ভিডিওতে সরাসরি খোলে, ব্যাক করলে ১..এই ক্লাস পর্যন্ত খোলা
   async function copy() {
-    const share = `${window.location.origin}${pathWithKey}`
+    const share = shareBase
+      ? `${shareBase}${pathWithKey}`
+      : `${window.location.origin}${pathWithKey}`
     try {
       await navigator.clipboard.writeText(share)
       setCopied(true)
