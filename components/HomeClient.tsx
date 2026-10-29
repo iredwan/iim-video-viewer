@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useDeferredValue } from 'react'
 import { ChevronRight, Play, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { inputCls } from '@/lib/ui'
-import { ytThumb } from '@/lib/youtube'
+import { ytThumb, ytThumbWide } from '@/lib/youtube'
 import type { PublicVideo } from '@/lib/types'
 
 const PAGE_SIZE = 12
@@ -145,20 +145,28 @@ export default function HomeClient() {
           {paginated.map((v) => (
             <li
               key={v.id}
-              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900 p-2.5 pr-3"
+              className="overflow-hidden rounded-2xl border border-white/10 bg-neutral-900 p-2.5"
             >
               <Link
-                href={`/v/${v.slug}?unlock=${unlockLevel}&key=${encodeURIComponent(userKey)}`}
-                className="group flex min-w-0 flex-1 items-center gap-3"
+                href={`/v/${v.slug}?class=${unlockLevel}&key=${encodeURIComponent(userKey)}`}
+                className="group block"
               >
-                <span className="relative block aspect-[9/16] w-16 shrink-0 overflow-hidden rounded-xl bg-black">
+                <span className="relative block aspect-video w-full overflow-hidden rounded-xl bg-black">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={ytThumb(v.youtube_id)} alt="" loading="lazy" className="size-full object-cover" />
-                  <span className="absolute inset-0 grid place-items-center bg-black/25 transition group-hover:bg-black/10">
-                    <Play className="size-5 fill-white text-white" />
+                  <img
+                    src={ytThumbWide(v.youtube_id)}
+                    alt=""
+                    loading="lazy"
+                    onError={(e) => {
+                      if (e.currentTarget.src !== ytThumb(v.youtube_id)) e.currentTarget.src = ytThumb(v.youtube_id)
+                    }}
+                    className="size-full object-cover"
+                  />
+                  <span className="absolute inset-0 grid place-items-center bg-black/20 transition group-hover:bg-black/10">
+                    <Play className="size-8 fill-white text-white" />
                   </span>
                 </span>
-                <span className="min-w-0 flex-1">
+                <span className="mt-2 block px-1">
                   <span className="block font-semibold break-words">{v.title?.trim() || `ক্লাস ${v.class_no}`}</span>
                   <span className="mt-0.5 flex items-center gap-1 text-sm text-neutral-400">
                     ক্লাস {v.class_no} • দেখুন <ChevronRight className="size-4" />

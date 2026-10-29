@@ -20,3 +20,5 @@ export function extractYouTubeId(input: string): string | null {
 }
 
 export const ytThumb = (id: string) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`
+// ১৬:৯ পূর্ণ থাম্বনেইল (কালো বার-ছাড়া); না থাকলে hqdefault-এ ফলব্যাক
+export const ytThumbWide = (id: string) => `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`

@@ -42,7 +42,7 @@ export default function VideoView({ youtubeId, title, classNo, maxUnlocked, user
         {/* ভিডিওর ওপরে টাইটেল এবং ব্যাক বাটন (ভিডিওর বাইরে) */}
         <div className="mb-3 flex items-center gap-3 px-4 sm:px-0">
           <Link
-            href={`/?unlock=${maxUnlocked}&key=${encodeURIComponent(userKey)}`}
+            href={`/?class=${maxUnlocked}&key=${encodeURIComponent(userKey)}`}
             aria-label="ক্লাস তালিকায় ফিরে যান"
             className="inline-flex size-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
           >
