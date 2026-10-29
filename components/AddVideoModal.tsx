@@ -4,19 +4,21 @@ import { useEffect, useMemo, useState } from 'react'
 import { ImagePlus, Loader2, Plus, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { extractYouTubeId } from '@/lib/youtube'
-import { uploadImages } from '@/lib/upload'
+import { uploadToLibrary } from '@/lib/upload'
+import type { LibraryImage } from '@/lib/types'
 import { btnGhost, btnPrimary, inputCls } from '@/lib/ui'
 
 type Props = {
-  batches: { id: string; name: string }[]
-  defaultBatchId?: string
+  nextClass: number
+  defaultKey: string
   onClose: () => void
   onAdded: () => Promise<void> | void
 }
 
-export default function AddVideoModal({ batches, defaultBatchId, onClose, onAdded }: Props) {
+export default function AddVideoModal({ nextClass, defaultKey, onClose, onAdded }: Props) {
   const [supabase] = useState(() => createClient())
-  const [batchId, setBatchId] = useState(defaultBatchId ?? batches[0]?.id ?? '')
+  const [classNo, setClassNo] = useState(String(nextClass))
+  const [accessKey, setAccessKey] = useState(defaultKey)
   const [title, setTitle] = useState('')
   const [link, setLink] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -41,7 +43,10 @@ export default function AddVideoModal({ batches, defaultBatchId, onClose, onAdde
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!batchId) return setError('একটি ব্যাচ নির্বাচন করুন')
+    const cls = Number(classNo)
+    if (!Number.isInteger(cls) || cls < 1) return setError('সঠিক ক্লাস নাম্বার দিন')
+    const key = accessKey.trim()
+    if (!key) return setError('পাসওয়ার্ড (গ্রুপের কী) দিন')
     const name = title.trim()
     if (!name) return setError('ভিডিওর টাইটেল দিন')
     const vid = extractYouTubeId(link)
@@ -49,20 +54,24 @@ export default function AddVideoModal({ batches, defaultBatchId, onClose, onAdde
 
     setBusy(true)
     try {
-      const urls = await uploadImages(files, (n) => setProgress(`ছবি আপলোড: ${n}/${files.length}`))
+      const added: LibraryImage[] = await uploadToLibrary(files, (n) =>
+        setProgress(`ছবি আপলোড: ${n}/${files.length}`)
+      )
       setProgress('সংরক্ষণ হচ্ছে…')
       const { data: v, error: e1 } = await supabase
         .from('videos')
-        .insert({ batch_id: batchId, youtube_id: vid, title: name })
+        .insert({ class_no: cls, access_key: key, youtube_id: vid, title: name })
         .select('id')
         .single()
       if (e1) throw new Error(e1.message)
-      if (urls.length) {
+      if (added.length) {
         const { error: e2 } = await supabase
           .from('video_images')
-          .insert(urls.map((url, i) => ({ video_id: v.id, url, position: i })))
+          .insert(added.map((im, i) => ({ video_id: v.id, image_id: im.id, position: i })))
         if (e2) {
           await supabase.from('videos').delete().eq('id', v.id)
+          // সব ছবি ভিডিওে যুক্ত হতে পারেনি — স্টোরেজের ফাইলগুলো পরিষ্কার
+          await supabase.storage.from('class-images').remove(added.map((im) => im.path).filter((p): p is string => !!p))
           throw new Error(e2.message)
         }
       }
@@ -98,16 +107,29 @@ export default function AddVideoModal({ batches, defaultBatchId, onClose, onAdde
           </button>
         </div>
 
-        <label className="block space-y-1.5 text-sm text-neutral-400">
-          ব্যাচ
-          <select value={batchId} onChange={(e) => setBatchId(e.target.value)} required className={inputCls}>
-            {batches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block space-y-1.5 text-sm text-neutral-400">
+            ক্লাস নাম্বার
+            <input
+              required
+              type="number"
+              min={1}
+              value={classNo}
+              onChange={(e) => setClassNo(e.target.value)}
+              className={inputCls}
+            />
+          </label>
+          <label className="block space-y-1.5 text-sm text-neutral-400">
+            পাসওয়ার্ড (কী)
+            <input
+              required
+              value={accessKey}
+              onChange={(e) => setAccessKey(e.target.value)}
+              className={inputCls}
+              placeholder="গ্রুপ লিংকের কী"
+            />
+          </label>
+        </div>
 
         <label className="block space-y-1.5 text-sm text-neutral-400">
           ভিডিওর টাইটেল

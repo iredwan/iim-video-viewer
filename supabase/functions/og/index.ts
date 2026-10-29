@@ -60,18 +60,16 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
       auth: { persistSession: false },
     })
-    const { data: v } = await supabase
-      .from('videos')
-      .select('id, youtube_id, title, batches(name)')
-      .eq('slug', slug)
-      .maybeSingle()
+    // সরাসরি টেবিল নয় — anon-এর জন্য নির্ধারিত RPC দিয়ে (videos-এ anon select বন্ধ)
+    const { data: v } = await supabase.rpc('get_public_og', { p_slug: slug })
 
     if (!v) {
       return htmlPage('ভিডিও পাওয়া যায়নি | ইক্বরা ইসলামিক মাদরাসা', `${SITE}/assets/logo/logo.png`, SITE, 404)
     }
 
-    const title = (v.title?.trim() || (v.batches as { name?: string } | null)?.name || 'ভিডিও') + ' | ইক্বরা ইসলামিক মাদরাসা'
-    const image = `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg`
+    const vData = v as { title?: string | null; class_no?: number | null; youtube_id: string }
+    const title = `${vData.class_no ? `ক্লাস ${vData.class_no} — ` : ''}${vData.title?.trim() || 'ভিডিও'} | ইক্বরা ইসলামিক মাদরাসা`
+    const image = `https://i.ytimg.com/vi/${vData.youtube_id}/hqdefault.jpg`
     return htmlPage(title, image, `${SITE}/v/${slug}`)
   } catch {
     return htmlPage('ইক্বরা ইসলামিক মাদরাসা', `${SITE}/assets/logo/logo.png`, SITE, 500)

@@ -1,38 +1,59 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ImagePlus, Loader2, Save, Trash2, X } from 'lucide-react'
+import { ImagePlus, Images, Loader2, Save, Trash2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { extractYouTubeId } from '@/lib/youtube'
-import { uploadImages } from '@/lib/upload'
+import { uploadToLibrary } from '@/lib/upload'
 import { btnDanger, btnGhost, btnPrimary, inputCls } from '@/lib/ui'
-import type { VideoRow } from '@/lib/types'
+import type { AdminVideoRow, LibraryImage } from '@/lib/types'
 
 type Props = {
-  video: VideoRow
-  index: number
+  video: AdminVideoRow
   onClose: () => void
   onChange: () => Promise<void>
 }
 
-export default function EditVideoModal({ video, index, onClose, onChange }: Props) {
+type Attached = { linkId: string; imageId: string; position: number; url: string }
+
+export default function EditVideoModal({ video, onClose, onChange }: Props) {
   const [supabase] = useState(() => createClient())
   const [title, setTitle] = useState(video.title ?? '')
   const [link, setLink] = useState(`https://youtu.be/${video.youtube_id}`)
+  const [classNo, setClassNo] = useState(String(video.class_no))
+  const [accessKey, setAccessKey] = useState(video.access_key)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [error, setError] = useState('')
+  const [library, setLibrary] = useState<LibraryImage[] | null>(null)
 
-  const images = useMemo(
-    () => [...(video.video_images ?? [])].sort((a, b) => a.position - b.position),
+  const attached = useMemo(
+    () =>
+      [...(video.video_images ?? [])]
+        .sort((a, b) => a.position - b.position)
+        .map((l) => ({ linkId: l.id, imageId: l.image_id, position: l.position, url: l.images?.url ?? '' }))
+        .filter((x) => x.url),
     [video]
   )
+  const attachedIds = useMemo(() => new Set(attached.map((a) => a.imageId)), [attached])
+  const freeLibrary = useMemo(() => (library ?? []).filter((im) => !attachedIds.has(im.id)), [library, attachedIds])
 
   // মিউটেশনের পর প্যারেন্ট রিলোড করলে ভিডিও অবজেক্ট নতুন হয় — তখন ফিল্ডগুলো সেভ হওয়া মানে সিঙ্ক হবে
   useEffect(() => {
     setTitle(video.title ?? '')
     setLink(`https://youtu.be/${video.youtube_id}`)
+    setClassNo(String(video.class_no))
+    setAccessKey(video.access_key)
   }, [video])
+
+  useEffect(() => {
+    supabase
+      .from('images')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(300)
+      .then(({ data }) => setLibrary((data ?? []) as LibraryImage[]))
+  }, [supabase])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onClose()
@@ -64,32 +85,53 @@ export default function EditVideoModal({ video, index, onClose, onChange }: Prop
       if (!name) throw new Error('ভিডিওর টাইটেল দিন')
       const vid = extractYouTubeId(link)
       if (!vid) throw new Error('ইউটিউব লিংকটি সঠিক নয়')
-      const { error } = await supabase.from('videos').update({ youtube_id: vid, title: name }).eq('id', video.id)
+      const cls = Number(classNo)
+      if (!Number.isInteger(cls) || cls < 1) throw new Error('সঠিক ক্লাস নাম্বার দিন')
+      const key = accessKey.trim()
+      if (!key) throw new Error('পাসওয়ার্ড (গ্রুপের কী) দিন')
+      const { error } = await supabase
+        .from('videos')
+        .update({ class_no: cls, access_key: key, youtube_id: vid, title: name })
+        .eq('id', video.id)
+      if (error) {
+        if ((error as { code?: string }).code === '23505') {
+          throw new Error('এই ক্লাস নাম্বার আগেই আছে — অন্য নাম্বার দিন')
+        }
+        throw new Error(error.message)
+      }
+    })
+
+  const detach = (linkId: string) =>
+    run(async () => {
+      const { error } = await supabase.from('video_images').delete().eq('id', linkId)
       if (error) throw new Error(error.message)
     })
 
-  const addImages = (list: File[]) =>
+  const attach = (image: LibraryImage) =>
     run(async () => {
-      if (!list.length) return
-      const urls = await uploadImages(list, (n) => setMsg(`আপলোড: ${n}/${list.length}`))
-      const start = images.length ? Math.max(...images.map((i) => i.position)) + 1 : 0
+      const position = attached.length ? Math.max(...attached.map((a) => a.position)) + 1 : 0
       const { error } = await supabase
         .from('video_images')
-        .insert(urls.map((url, i) => ({ video_id: video.id, url, position: start + i })))
+        .insert({ video_id: video.id, image_id: image.id, position })
       if (error) throw new Error(error.message)
-      setMsg('')
     })
 
-  const delImage = (id: string) =>
+  const addFiles = (list: File[]) =>
     run(async () => {
-      if (!confirm('ছবিটি মুছবেন?')) return
-      const { error } = await supabase.from('video_images').delete().eq('id', id)
+      if (!list.length) return
+      const added = await uploadToLibrary(list, (n) => setMsg(`আপলোড: ${n}/${list.length}`))
+      const base = attached.length ? Math.max(...attached.map((a) => a.position)) + 1 : 0
+      const { error } = await supabase
+        .from('video_images')
+        .insert(added.map((im, i) => ({ video_id: video.id, image_id: im.id, position: base + i })))
       if (error) throw new Error(error.message)
+      setLibrary((prev) => [...added, ...(prev ?? [])].slice(0, 300))
+      setMsg('')
     })
 
   const delVideo = () =>
     run(async () => {
-      if (!confirm('এই ভিডিও ও এর সব ছবি মুছবেন? শেয়ার লিংকও কাজ করবে না।')) return
+      if (!confirm('এই ভিডিও মুছবেন? লাইব্রেরির ছবিগুলো থাকবে, শুধু এই ভিডিও থেকে লিংক সরানো হবে। শেয়ার লিংকও কাজ করবে না।')) return
       const { error } = await supabase.from('videos').delete().eq('id', video.id)
       if (error) throw new Error(error.message)
       onClose()
@@ -120,13 +162,35 @@ export default function EditVideoModal({ video, index, onClose, onChange }: Prop
           </button>
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block space-y-1.5 text-sm text-neutral-400">
+            ক্লাস নাম্বার
+            <input
+              type="number"
+              min={1}
+              value={classNo}
+              onChange={(e) => setClassNo(e.target.value)}
+              className={inputCls}
+            />
+          </label>
+          <label className="block space-y-1.5 text-sm text-neutral-400">
+            পাসওয়ার্ড (কী)
+            <input
+              value={accessKey}
+              onChange={(e) => setAccessKey(e.target.value)}
+              className={inputCls}
+              placeholder="গ্রুপ লিংকের কী"
+            />
+          </label>
+        </div>
+
         <label className="block space-y-1.5 text-sm text-neutral-400">
           ভিডিওর টাইটেল
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             maxLength={200}
-            placeholder={`ভিডিও ${index + 1}`}
+            placeholder={`ক্লাস ${classNo}`}
             className={inputCls}
           />
         </label>
@@ -147,19 +211,22 @@ export default function EditVideoModal({ video, index, onClose, onChange }: Prop
           সংরক্ষণ
         </button>
 
-        <div className="space-y-2 border-t border-white/10 pt-4">
-          <span className="block text-sm text-neutral-400">ছবি ({images.length})</span>
-          {images.length > 0 && (
+        <div className="space-y-3 border-t border-white/10 pt-4">
+          <div className="flex items-center gap-2 text-sm text-neutral-400">
+            <Images className="size-4" />
+            এই ভিডিওতে যুক্ত ({attached.length})
+          </div>
+          {attached.length > 0 && (
             <div className="grid grid-cols-4 gap-2">
-              {images.map((img) => (
-                <div key={img.id} className="relative aspect-[9/16] overflow-hidden rounded-lg bg-black">
+              {attached.map((a) => (
+                <div key={a.linkId} className="relative aspect-[9/16] overflow-hidden rounded-lg bg-black">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={img.url} alt="" className="size-full object-cover" />
+                  <img src={a.url} alt="" className="size-full object-cover" />
                   <button
                     type="button"
-                    onClick={() => delImage(img.id)}
+                    onClick={() => detach(a.linkId)}
                     disabled={busy}
-                    aria-label="ছবি মুছুন"
+                    aria-label="সরান"
                     className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/75 text-white disabled:opacity-50"
                   >
                     <X className="size-3.5" />
@@ -168,20 +235,48 @@ export default function EditVideoModal({ video, index, onClose, onChange }: Prop
               ))}
             </div>
           )}
+
           <label className={`${btnGhost} w-full cursor-pointer ${busy ? 'pointer-events-none opacity-50' : ''}`}>
             <ImagePlus className="size-4" />
-            ছবি যোগ করুন
+            নতুন ছবি আপলোড করুন
             <input
               type="file"
               accept="image/*"
               multiple
               className="sr-only"
               onChange={(e) => {
-                addImages(Array.from(e.target.files ?? []))
+                addFiles(Array.from(e.target.files ?? []))
                 e.target.value = ''
               }}
             />
           </label>
+
+          <div className="space-y-2">
+            <div className="text-xs text-neutral-500">লাইব্রেরি — আগের কোনো ছবিতে ক্লিক করলেই এই ভিডিওতে যুক্ত হবে</div>
+            {library === null ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="size-4 animate-spin text-neutral-500" />
+              </div>
+            ) : freeLibrary.length > 0 ? (
+              <div className="grid grid-cols-4 gap-2">
+                {freeLibrary.map((im) => (
+                  <button
+                    type="button"
+                    key={im.id}
+                    onClick={() => attach(im)}
+                    disabled={busy}
+                    className="relative aspect-[3/4] overflow-hidden rounded-lg bg-black ring-1 ring-white/10 transition hover:ring-blue-500 disabled:opacity-50"
+                    title="এই ভিডিওতে যুক্ত করুন"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={im.url} alt="" loading="lazy" className="size-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-500">লাইব্রেরির সব ছবি এই ভিডিওতে যুক্ত আছে।</p>
+            )}
+          </div>
         </div>
 
         <button onClick={delVideo} disabled={busy} className={`${btnDanger} w-full`}>

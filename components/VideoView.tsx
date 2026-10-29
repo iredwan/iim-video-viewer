@@ -11,11 +11,12 @@ import type { ImageRow } from '@/lib/types'
 type Props = {
   youtubeId: string
   title: string | null
-  batch: { id: string; name: string }
+  classNo: number
+  userKey: string
   images: ImageRow[]
 }
 
-export default function VideoView({ youtubeId, title, batch, images }: Props) {
+export default function VideoView({ youtubeId, title, classNo, userKey, images }: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   const sorted = useMemo(() => [...images].sort((a, b) => a.position - b.position), [images])
 
@@ -40,19 +41,17 @@ export default function VideoView({ youtubeId, title, batch, images }: Props) {
         {/* ভিডিওর ওপরে টাইটেল এবং ব্যাক বাটন (ভিডিওর বাইরে) */}
         <div className="mb-3 flex items-center gap-3 px-4 sm:px-0">
           <Link
-            href={`/?batch=${batch.id}`}
-            aria-label="ব্যাচে ফিরে যান"
+            href={`/?class=${classNo}&key=${encodeURIComponent(userKey)}`}
+            aria-label="ক্লাস তালিকায় ফিরে যান"
             className="inline-flex size-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
           >
             <ArrowLeft className="size-5" />
           </Link>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-base font-semibold text-white drop-shadow">
-              {title?.trim() || batch.name}
+              ক্লাস {classNo} — {title?.trim() || 'ক্লাস রেকডিং'}
             </span>
-            {title?.trim() && (
-              <span className="block truncate text-xs text-neutral-400">{batch.name}</span>
-            )}
+            <span className="block truncate text-xs text-neutral-400">ইক্বরা ইসলামিক মাদরাসা</span>
           </span>
         </div>
 
@@ -78,7 +77,7 @@ export default function VideoView({ youtubeId, title, batch, images }: Props) {
           <h2 className="mb-4 text-lg font-semibold">ছবিসমূহ</h2>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {sorted.map((img, i) => (
-              <ImageCard key={img.id} src={img.url} alt={`${batch.name} ছবি ${i + 1}`} onView={() => setOpenIdx(i)} />
+              <ImageCard key={img.id} src={img.url} alt={`ক্লাস ${classNo} ছবি ${i + 1}`} onView={() => setOpenIdx(i)} />
             ))}
           </div>
         </section>
