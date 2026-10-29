@@ -15,10 +15,11 @@ export default function AdminVideoItem({ video, onChange }: Props) {
 
   const images = [...(video.video_images ?? [])]
   const path = `/v/${video.slug}`
+  const pathWithKey = `${path}?key=${encodeURIComponent(video.access_key)}`
 
-  // গ্রুপে শেয়ার করার লিংক: এই ক্লাস পর্যন্ত দেখার অনুমতি + পাসওয়ার্ড
+  // গ্রুপে শেয়ার করার লিংক: ওই ভিডিওতে সরাসরি খোলে, ব্যাক করলে ১..এই ক্লাস পর্যন্ত খোলা
   async function copy() {
-    const share = `${window.location.origin}/?class=${video.class_no}&key=${encodeURIComponent(video.access_key)}`
+    const share = `${window.location.origin}${pathWithKey}`
     try {
       await navigator.clipboard.writeText(share)
       setCopied(true)
@@ -41,10 +42,10 @@ export default function AdminVideoItem({ video, onChange }: Props) {
           <p className="text-xs text-neutral-500">{images.length} টি ছবি</p>
         </div>
         <div className="flex shrink-0 gap-1.5">
-          <button type="button" onClick={copy} className={iconBtn} aria-label="শেয়ার লিংক কপি" title="শেয়ার লিংক কপি">
+          <button type="button" onClick={copy} className={iconBtn} aria-label="শেয়ার লিংক কপি" title="গ্রুপের শেয়ার লিংক কপি">
             {copied ? <Check className="size-4 text-emerald-400" /> : <Copy className="size-4" />}
           </button>
-          <a href={path} target="_blank" rel="noreferrer" className={iconBtn} aria-label="খুলুন" title="খুলুন">
+          <a href={pathWithKey} target="_blank" rel="noreferrer" className={iconBtn} aria-label="খুলুন" title="খুলুন">
             <ExternalLink className="size-4" />
           </a>
           <button

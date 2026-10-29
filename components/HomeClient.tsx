@@ -24,11 +24,12 @@ export default function HomeClient() {
     const p = new URLSearchParams(window.location.search)
     setParams(p)
 
-    const cls = Number(p.get('class'))
-    const key = p.get('key') ?? ''
+    // unlock প্রমাণ (আগের লিংকের সাথে সামঞ্জস্যে class প্যারামও চলে) + key → তবেই কোয়েরি
+    const unlock = Number(p.get('unlock') ?? p.get('class'))
+    const key = (p.get('key') ?? '').trim()
+    const hasParams = Boolean(p.get('unlock') || p.get('class') || p.get('key'))
 
-    // ক্লাস নাম্বার + পাসওয়ার্ড দুটোই থাকলে তবেই কোয়েরি — নাহলে কোনো API কল নয়
-    if (!p.get('class') || !Number.isInteger(cls) || cls < 1 || !key.trim()) {
+    if (!hasParams || !Number.isInteger(unlock) || unlock < 1 || !key) {
       setInvalid(true)
       return
     }
@@ -36,15 +37,11 @@ export default function HomeClient() {
     let alive = true
     setVideos(null)
     createClient()
-      .rpc('get_public_videos', { p_class: cls, p_key: key.trim() })
+      .rpc('get_public_videos', { p_class: unlock, p_key: key })
       .then(({ data, error }) => {
         if (!alive) return
         if (error) setVideos('error')
-        else {
-          const rows = (data ?? []) as unknown as PublicVideo[]
-          // ভুল পাসওয়ার্ড/অসাবধান লিংকে কিছু না ফিরলে সমান মেসেজ
-          setVideos(rows)
-        }
+        else setVideos((data ?? []) as unknown as PublicVideo[])
       })
     return () => {
       alive = false
@@ -55,7 +52,9 @@ export default function HomeClient() {
     const list = videos === 'error' || videos === null ? [] : videos
     const q = deferredQuery.trim().toLowerCase()
     if (!q) return list
-    return list.filter((v) => (v.title ?? '').toLowerCase().includes(q) || String(v.class_no).includes(q))
+    return list.filter(
+      (v) => (v.title ?? '').toLowerCase().includes(q) || String(v.class_no).includes(q)
+    )
   }, [videos, deferredQuery])
 
   const paginated = useMemo(() => filtered.slice(0, displayCount), [filtered, displayCount])
@@ -76,7 +75,14 @@ export default function HomeClient() {
   }, [filtered.length, invalid])
 
   const userKey = useMemo(() => params?.get('key') ?? '', [params])
-  const topClass = useMemo(() => Math.max(0, ...(videos && videos !== 'error' ? videos.map((v) => v.class_no) : [0])), [videos])
+  const unlockLevel = useMemo(
+    () => Number(params?.get('unlock') ?? params?.get('class') ?? 0),
+    [params]
+  )
+  const topClass = useMemo(
+    () => Math.max(0, ...(videos && videos !== 'error' ? videos.map((v) => v.class_no) : [0])),
+    [videos]
+  )
 
   if (invalid || !params) {
     return (
@@ -142,7 +148,7 @@ export default function HomeClient() {
               className="flex items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900 p-2.5 pr-3"
             >
               <Link
-                href={`/v/${v.slug}?key=${encodeURIComponent(userKey)}`}
+                href={`/v/${v.slug}?unlock=${unlockLevel}&key=${encodeURIComponent(userKey)}`}
                 className="group flex min-w-0 flex-1 items-center gap-3"
               >
                 <span className="relative block aspect-[9/16] w-16 shrink-0 overflow-hidden rounded-xl bg-black">

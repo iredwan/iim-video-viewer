@@ -27,15 +27,24 @@ function VideoClientInner() {
 
   const slug = getSlug(pathname, params)
   const key = params.get('key') ?? ''
+  const unlockParam = params.get('unlock') ?? params.get('class')
+  const unlock = unlockParam ? Number(unlockParam) : 0
+  const hasUnlock = Boolean(unlockParam) && Number.isInteger(unlock) && unlock >= 1 && key.trim() !== ''
+  const hasOwnKey = key.trim() !== ''
 
   useEffect(() => {
-    if (!/^[a-z0-9]{6,16}$/.test(slug) || !key.trim()) {
+    if (!/^[a-z0-9]{6,16}$/.test(slug) || (!hasUnlock && !hasOwnKey)) {
       setVideo('error')
       return
     }
     let alive = true
     createClient()
-      .rpc('get_public_video', { p_slug: slug, p_key: key.trim() })
+      .rpc(
+        hasUnlock ? 'get_public_unlocked_video' : 'get_public_video',
+        hasUnlock
+          ? { p_class: unlock, p_key: key, p_slug: slug }
+          : { p_slug: slug, p_key: key }
+      )
       .then(({ data, error }) => {
         if (!alive) return
         if (error) setVideo('error')
@@ -44,7 +53,7 @@ function VideoClientInner() {
     return () => {
       alive = false
     }
-  }, [slug, key])
+  }, [slug, key, hasUnlock, unlock])
 
   useEffect(() => {
     if (video && video !== 'error') {
@@ -60,6 +69,9 @@ function VideoClientInner() {
     [video]
   )
 
+  // back বাটনের unlock সীমা: unlock-লিংকে খুললে ঐ সীমা; নিজস্ব পাসওয়ার্ডে খুললে ওই ভিডিওর ক্লাস
+  const maxUnlocked = video && video !== 'error' ? (hasUnlock ? Math.min(unlock, Math.max(unlock, video.class_no)) : video.class_no) : 0
+
   if (!video) {
     return <div className="mx-auto mt-10 aspect-video w-full max-w-3xl animate-pulse rounded-xl bg-neutral-800" />
   }
@@ -73,6 +85,7 @@ function VideoClientInner() {
       youtubeId={video.youtube_id}
       title={video.title}
       classNo={video.class_no}
+      maxUnlocked={maxUnlocked}
       userKey={key}
       images={images}
     />
