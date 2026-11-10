@@ -15,6 +15,22 @@ function isCrawler(ua) {
   return !!ua && CRAWLER_RE.test(ua)
 }
 
+// ভিডিও পেজে যে কুয়েরি প্যারাম দরকার (পাসওয়ার্ড/unlock) — বাকিগুলো (fbclid, utm_…)
+// ট্র্যাকিং নয়েজ, ওগ প্রিভিউ/রিডাইরেক্টে ফেলে দেওয়া হয়
+const KEEP_PARAMS = ['key', 'unlock', 'class']
+
+function cleanSearch(search) {
+  if (!search) return ''
+  const src = new URLSearchParams(search)
+  const out = new URLSearchParams()
+  for (const name of KEEP_PARAMS) {
+    const v = src.get(name)
+    if (v !== null && v !== '') out.set(name, v)
+  }
+  const s = out.toString()
+  return s ? `?${s}` : ''
+}
+
 function esc(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -121,16 +137,19 @@ export default {
     if (!m) return Response.redirect(site + url.pathname + url.search, 302)
 
     const slug = m[1]
-    const target = `${site}/v/${slug}`
-    const selfUrl = `${url.origin}/v/${slug}`
+    // শেয়ার করা লিংকের key/unlock কুয়েরি সব জায়গায় প্রিজার্ভ — নইলে OG প্রিভিউতে
+    // ক্লিক করলে (og:url/redirect) পাসওয়ার্ড হারিয়ে ভিডিও খোলে না
+    const shareQuery = cleanSearch(url.search)
+    const target = `${site}/v/${slug}${shareQuery}`
+    const selfUrl = `${url.origin}/v/${slug}${shareQuery}`
     const ua = request.headers.get('user-agent') || ''
 
     // মানুষ → সরাসরি আসল পেজে (key সহ পুরো কুয়েরি প্রিজার্ভ — নইলে ভিডিও খুলবে না)
-    if (!isCrawler(ua)) return Response.redirect(target + url.search, 302)
+    if (!isCrawler(ua)) return Response.redirect(target, 302)
 
-    // ক্রলারের জন্য ক্যাশ করা HTML থাকলে সাথে সাথে দিন
+    // ক্রলারের জন্য ক্যাশ করা HTML থাকলে সাথে সাথে দিন (কুয়েরি অনুযায়ী আলাদা কী)
     const cache = caches.default
-    const htmlKey = new Request(`${url.origin}/__og/${slug}`)
+    const htmlKey = new Request(`${url.origin}/__og/${slug}${shareQuery}`)
     const cached = await cache.match(htmlKey)
     if (cached) return cached
 
@@ -161,7 +180,7 @@ export default {
       }
 
       const v = await r.json()
-      if (!v || !v.youtube_id) return Response.redirect(target + url.search, 302)
+      if (!v || !v.youtube_id) return Response.redirect(target, 302)
 
       const title = `${v.class_no ? `ক্লাস ${v.class_no} — ` : ''}${(v.title || '').trim() || 'ভিডিও'} | ${SITE_NAME}`
       const image = `${url.origin}/img/${v.youtube_id}.jpg`

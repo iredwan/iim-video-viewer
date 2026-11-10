@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ImagePlus, Images, Loader2, Save, Trash2, X } from 'lucide-react'
+import { Check, Eye, ImagePlus, Images, Loader2, Save, Trash2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { extractYouTubeId } from '@/lib/youtube'
 import { uploadToLibrary } from '@/lib/upload'
@@ -26,6 +26,7 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
   const [msg, setMsg] = useState('')
   const [error, setError] = useState('')
   const [library, setLibrary] = useState<LibraryImage[] | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
 
   const attached = useMemo(
     () =>
@@ -35,8 +36,6 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
         .filter((x) => x.url),
     [video]
   )
-  const attachedIds = useMemo(() => new Set(attached.map((a) => a.imageId)), [attached])
-  const freeLibrary = useMemo(() => (library ?? []).filter((im) => !attachedIds.has(im.id)), [library, attachedIds])
 
   // মিউটেশনের পর প্যারেন্ট রিলোড করলে ভিডিও অবজেক্ট নতুন হয় — তখন ফিল্ডগুলো সেভ হওয়া মানে সিঙ্ক হবে
   useEffect(() => {
@@ -56,7 +55,11 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
   }, [supabase])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onClose()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (preview) setPreview(null)
+      else if (!busy) onClose()
+    }
     window.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -64,7 +67,7 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
-  }, [busy, onClose])
+  }, [busy, onClose, preview])
 
   async function run(fn: () => Promise<void>) {
     setBusy(true)
@@ -116,6 +119,22 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
       if (error) throw new Error(error.message)
     })
 
+  const delImage = (im: LibraryImage) =>
+    run(async () => {
+      if (!confirm('লাইব্রেরি থেকে এই ছবিটি মুছবেন? এটি যেসব ভিডিওতে যুক্ত আছে সেখান থেকেও সরে যাবে।')) return
+      // ক্রম: ভিডিও-লিংক → স্টোরেজ ফাইল → লাইব্রেরি রেকর্ড
+      const { error: linkErr } = await supabase.from('video_images').delete().eq('image_id', im.id)
+      if (linkErr) throw new Error(linkErr.message)
+      if (im.path) {
+        const { error: storeErr } = await supabase.storage.from('class-images').remove([im.path])
+        if (storeErr) throw new Error(storeErr.message)
+      }
+      const { error: rowErr } = await supabase.from('images').delete().eq('id', im.id)
+      if (rowErr) throw new Error(rowErr.message)
+      setLibrary((prevEdit) => (prevEdit ?? []).filter((x) => x.id !== im.id))
+      setPreview((p) => (p === im.url ? null : p))
+    })
+
   const addFiles = (list: File[]) =>
     run(async () => {
       if (!list.length) return
@@ -138,6 +157,7 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
     })
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-4"
       onClick={() => !busy && onClose()}
@@ -224,6 +244,15 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
                   <img src={a.url} alt="" className="size-full object-cover" />
                   <button
                     type="button"
+                    onClick={() => setPreview(a.url)}
+                    aria-label="বড় করে দেখুন"
+                    title="বড় করে দেখুন"
+                    className="absolute left-1 top-1 grid size-6 place-items-center rounded-full bg-black/75 text-white transition hover:text-blue-300"
+                  >
+                    <Eye className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => detach(a.linkId)}
                     disabled={busy}
                     aria-label="সরান"
@@ -252,29 +281,66 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
           </label>
 
           <div className="space-y-2">
-            <div className="text-xs text-neutral-500">লাইব্রেরি — আগের কোনো ছবিতে ক্লিক করলেই এই ভিডিওতে যুক্ত হবে</div>
+            <div className="mb-1 text-xs text-neutral-500">
+              লাইব্রেরি — আপলোড করা সব ছবি এখানে জমা থাকে। ছবিতে ক্লিক করলে এই ভিডিওতে যুক্ত/বাদ হবে (নীল ডোরা = যুক্ত)। চোখে বড় দেখা, ট্র্যাশে মুছুন।
+            </div>
             {library === null ? (
               <div className="flex justify-center py-4">
                 <Loader2 className="size-4 animate-spin text-neutral-500" />
               </div>
-            ) : freeLibrary.length > 0 ? (
+            ) : library.length > 0 ? (
               <div className="grid grid-cols-4 gap-2">
-                {freeLibrary.map((im) => (
-                  <button
-                    type="button"
-                    key={im.id}
-                    onClick={() => attach(im)}
-                    disabled={busy}
-                    className="relative aspect-[3/4] overflow-hidden rounded-lg bg-black ring-1 ring-white/10 transition hover:ring-blue-500 disabled:opacity-50"
-                    title="এই ভিডিওতে যুক্ত করুন"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={im.url} alt="" loading="lazy" className="size-full object-cover" />
-                  </button>
-                ))}
+                {library.map((im) => {
+                  const link = (video.video_images ?? []).find((l) => l.image_id === im.id)
+                  return (
+                    <div
+                      key={im.id}
+                      className={`relative aspect-[3/4] overflow-hidden rounded-lg bg-black transition ${link ? 'ring-2 ring-blue-500' : 'ring-1 ring-white/10 hover:ring-blue-500'} ${busy ? 'opacity-60' : ''}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={im.url} alt="" loading="lazy" className="pointer-events-none size-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => (link ? detach(link.id) : attach(im))}
+                        disabled={busy}
+                        className="absolute inset-0"
+                        title={link ? 'ভিডিও থেকে বাদ দিন' : 'এই ভিডিওতে যুক্ত করুন'}
+                        aria-label={link ? 'ভিডিও থেকে বাদ দিন' : 'এই ভিডিওতে যুক্ত করুন'}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPreview(im.url)}
+                        disabled={busy}
+                        className="absolute left-1 top-1 grid size-6 place-items-center rounded-full bg-black/75 text-white transition hover:text-blue-300 disabled:opacity-50"
+                        title="বড় করে দেখুন"
+                        aria-label="বড় করে দেখুন"
+                      >
+                        <Eye className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => delImage(im)}
+                        disabled={busy}
+                        className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/75 text-white transition hover:text-red-400 disabled:opacity-50"
+                        title="লাইব্রেরি থেকে মুছুন"
+                        aria-label="লাইব্রেরি থেকে মুছুন"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                      {link && (
+                        <span
+                          className="absolute bottom-1 left-1 grid size-5 place-items-center rounded-full bg-blue-600 text-white"
+                          title="এই ভিডিওতে যুক্ত আছে"
+                        >
+                          <Check className="size-3" />
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             ) : (
-              <p className="text-xs text-neutral-500">লাইব্রেরির সব ছবি এই ভিডিওতে যুক্ত আছে।</p>
+              <p className="text-xs text-neutral-500">লাইব্রেরি খালি — উপরের বাটন থেকে ছবি আপলোড করুন।</p>
             )}
           </div>
         </div>
@@ -288,5 +354,29 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
         {msg && <p className="text-sm text-neutral-400">{msg}</p>}
       </div>
     </div>
+
+    {preview && (
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 p-3"
+        onClick={() => setPreview(null)}
+      >
+        <button
+          type="button"
+          onClick={() => setPreview(null)}
+          aria-label="বন্ধ করুন"
+          className="absolute right-3 top-3 inline-flex size-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+        >
+          <X className="size-6" />
+        </button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={preview}
+          alt="লাইব্রেরির ছবি"
+          className="max-h-[88dvh] max-w-[94vw] rounded-xl bg-black object-contain"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    )}
+    </>
   )
 }
