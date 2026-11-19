@@ -37,14 +37,17 @@ export default function AdminVideoItem({ video, onChange }: Props) {
   return (
     <li className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
       <div className="flex items-center gap-3">
-        <img src={ytThumb(video.youtube_id)} alt="" className="aspect-video w-40 shrink-0 rounded-md bg-black object-cover" />
+        <div className="shrink-0">
+          <img src={ytThumb(video.youtube_id)} alt="" className="aspect-video w-40 rounded-md bg-black object-cover" />
+          <p className="mt-1 text-center text-xs text-neutral-500 sm:hidden">{images.length} টি ছবি</p>
+        </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">
             <span className="text-blue-400">ক্লাস {video.class_no}</span>
             {video.title?.trim() ? ` — ${video.title.trim()}` : ''}
           </p>
           <p className="truncate text-xs text-neutral-400">{path}</p>
-          <p className="text-xs text-neutral-500">{images.length} টি ছবি</p>
+          <p className="hidden text-xs text-neutral-500 sm:block">{images.length} টি ছবি</p>
         </div>
         <div className="flex shrink-0 gap-1.5">
           <button type="button" onClick={copy} className={iconBtn} aria-label="শেয়ার লিংক কপি" title="গ্রুপের শেয়ার লিংক কপি">

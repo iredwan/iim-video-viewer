@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ExternalLink, Loader2, LogOut, Plus } from 'lucide-react'
+import { ExternalLink, Images, Loader2, LogOut, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import AddVideoModal from '@/components/AddVideoModal'
 import AdminVideoItem from '@/components/AdminVideoItem'
+import ImageLibraryBrowser from '@/components/ImageLibraryBrowser'
 import { btnGhost, btnPrimary } from '@/lib/ui'
 import type { AdminVideoRow } from '@/lib/types'
 
@@ -16,6 +17,7 @@ export default function Admin() {
   const [videos, setVideos] = useState<AdminVideoRow[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
+  const [libOpen, setLibOpen] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -29,7 +31,7 @@ export default function Admin() {
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('videos')
-      .select('id, slug, youtube_id, title, class_no, access_key, created_at, video_images(id, position, image_id, images(id, url))')
+      .select('id, slug, youtube_id, title, class_no, access_key, created_at, video_images(id, position, image_id, images(id, url, path))')
       .order('class_no', { ascending: true })
     if (error) setError(error.message)
     else {
@@ -63,27 +65,28 @@ export default function Admin() {
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-6">
-      <header className="mb-6 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-bold sm:text-2xl">অ্যাডমিন প্যানেল</h1>
-        <div className="flex gap-2">
-          <a href="/" target="_blank" rel="noreferrer" className={btnGhost}>
+      <header className="sticky top-0 z-30 -mx-4 mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-neutral-950/90 px-4 py-3 backdrop-blur">
+        <h1 className="text-base font-bold sm:text-xl">অ্যাডমিন প্যানেল</h1>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <button onClick={() => setModal(true)} className={btnPrimary}>
+            <Plus className="size-4" />
+            <span className="hidden sm:inline">নতুন ক্লাস (ভিডিও) যুক্ত করুন</span>
+            <span className="sm:hidden">নতুন ক্লাস</span>
+          </button>
+          <a href="/" target="_blank" rel="noreferrer" className={btnGhost} aria-label="পাবলিক পেজ" title="পাবলিক পেজ">
             <ExternalLink className="size-4" />
             <span className="hidden sm:inline">পাবলিক পেজ</span>
           </a>
+          <button onClick={() => setLibOpen(true)} className={btnGhost} aria-label="ছবি লাইব্রেরি" title="ছবি লাইব্রেরি">
+            <Images className="size-4" />
+            <span className="hidden sm:inline">ছবি লাইব্রেরি</span>
+          </button>
           <button onClick={logout} className={btnGhost} aria-label="লগআউট">
             <LogOut className="size-4" />
             <span className="hidden sm:inline">লগআউট</span>
           </button>
         </div>
       </header>
-
-      <button
-        onClick={() => setModal(true)}
-        className={`${btnPrimary} w-full py-3.5 text-base`}
-      >
-        <Plus className="size-5" />
-        নতুন ক্লাস (ভিডিও) যুক্ত করুন
-      </button>
 
       {error && <p className="mt-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-400">{error}</p>}
 
@@ -119,6 +122,8 @@ export default function Admin() {
           onAdded={load}
         />
       )}
+
+      {libOpen && <ImageLibraryBrowser videos={videos} onClose={() => setLibOpen(false)} onChange={load} />}
     </main>
   )
 }

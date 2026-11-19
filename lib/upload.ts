@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { compressImage } from './image'
 import type { LibraryImage } from './types'
 
@@ -35,4 +36,45 @@ export async function uploadToLibrary(files: File[], onProgress: (n: number) => 
     onProgress(i + 1)
   }
   return rows
+}
+
+// লাইব্রেরির একটি ছবি নতুন ফাইল দিয়ে বদলানো: একই রেকর্ড আপডেট হয় (ভিডিও-লিংক/পজিশন অটো থাকে),
+// আর পুরনো ছবিটি স্টোরেজ থেকেও পুরোপুরি মুছে ফেলা হয়
+export async function replaceLibraryImage(
+  supabase: SupabaseClient,
+  target: { imageId: string; path: string | null },
+  file: File
+): Promise<LibraryImage> {
+  const { data } = await supabase.auth.getSession()
+  if (!data.session) throw new Error('ছবি বদলানোর জন্য লগইন করুন')
+
+  const f = await compressImage(file)
+  const ext = (f.name.split('.').pop() || 'jpg').toLowerCase()
+  const newPath = `images/${crypto.randomUUID()}.${ext}`
+
+  const { error: upErr } = await supabase.storage
+    .from(BUCKET)
+    .upload(newPath, f, { contentType: f.type || 'image/jpeg', upsert: false })
+  if (upErr) throw new Error(upErr.message)
+
+  const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(newPath)
+
+  const { data: row, error: rowErr } = await supabase
+    .from('images')
+    .update({ url: pub.publicUrl, path: newPath, byte_size: f.size })
+    .eq('id', target.imageId)
+    .select()
+    .single()
+  if (rowErr) {
+    // রেকর্ড আপডেট হতে না পারলে নতুন আপলোড হওয়া ফাইলটি সরিয়ে দিই
+    await supabase.storage.from(BUCKET).remove([newPath])
+    throw new Error(rowErr.message)
+  }
+
+  // পুরনো ছবিটি স্টোরেজ থেকেও পুরোপুরি মুছে ফেলা
+  if (target.path) {
+    const { error: delErr } = await supabase.storage.from(BUCKET).remove([target.path])
+    if (delErr) throw new Error(delErr.message)
+  }
+  return row as LibraryImage
 }

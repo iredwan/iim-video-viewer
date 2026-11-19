@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Check, Eye, ImagePlus, Images, Loader2, Save, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Eye, ImagePlus, Images, Loader2, Repeat, Save, Trash2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { extractYouTubeId } from '@/lib/youtube'
-import { uploadToLibrary } from '@/lib/upload'
+import { replaceLibraryImage, uploadToLibrary } from '@/lib/upload'
 import { btnDanger, btnGhost, btnPrimary, inputCls } from '@/lib/ui'
-import type { AdminVideoRow, LibraryImage } from '@/lib/types'
+import type { AdminVideoRow } from '@/lib/types'
 
 type Props = {
   video: AdminVideoRow
@@ -14,7 +14,7 @@ type Props = {
   onChange: () => Promise<void>
 }
 
-type Attached = { linkId: string; imageId: string; position: number; url: string }
+type Attached = { linkId: string; imageId: string; position: number; url: string; path: string | null }
 
 export default function EditVideoModal({ video, onClose, onChange }: Props) {
   const [supabase] = useState(() => createClient())
@@ -25,14 +25,21 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [error, setError] = useState('')
-  const [library, setLibrary] = useState<LibraryImage[] | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const replaceInputRef = useRef<HTMLInputElement>(null)
+  const [replaceTarget, setReplaceTarget] = useState<Attached | null>(null)
 
   const attached = useMemo(
     () =>
       [...(video.video_images ?? [])]
         .sort((a, b) => a.position - b.position)
-        .map((l) => ({ linkId: l.id, imageId: l.image_id, position: l.position, url: l.images?.url ?? '' }))
+        .map((l) => ({
+          linkId: l.id,
+          imageId: l.image_id,
+          position: l.position,
+          url: l.images?.url ?? '',
+          path: l.images?.path ?? null,
+        }))
         .filter((x) => x.url),
     [video]
   )
@@ -46,19 +53,8 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
   }, [video])
 
   useEffect(() => {
-    supabase
-      .from('images')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(300)
-      .then(({ data }) => setLibrary((data ?? []) as LibraryImage[]))
-  }, [supabase])
-
-  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      if (preview) setPreview(null)
-      else if (!busy) onClose()
+      if (e.key === 'Escape' && preview) setPreview(null)
     }
     window.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
@@ -67,7 +63,7 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
-  }, [busy, onClose, preview])
+  }, [preview])
 
   async function run(fn: () => Promise<void>) {
     setBusy(true)
@@ -110,31 +106,6 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
       if (error) throw new Error(error.message)
     })
 
-  const attach = (image: LibraryImage) =>
-    run(async () => {
-      const position = attached.length ? Math.max(...attached.map((a) => a.position)) + 1 : 0
-      const { error } = await supabase
-        .from('video_images')
-        .insert({ video_id: video.id, image_id: image.id, position })
-      if (error) throw new Error(error.message)
-    })
-
-  const delImage = (im: LibraryImage) =>
-    run(async () => {
-      if (!confirm('লাইব্রেরি থেকে এই ছবিটি মুছবেন? এটি যেসব ভিডিওতে যুক্ত আছে সেখান থেকেও সরে যাবে।')) return
-      // ক্রম: ভিডিও-লিংক → স্টোরেজ ফাইল → লাইব্রেরি রেকর্ড
-      const { error: linkErr } = await supabase.from('video_images').delete().eq('image_id', im.id)
-      if (linkErr) throw new Error(linkErr.message)
-      if (im.path) {
-        const { error: storeErr } = await supabase.storage.from('class-images').remove([im.path])
-        if (storeErr) throw new Error(storeErr.message)
-      }
-      const { error: rowErr } = await supabase.from('images').delete().eq('id', im.id)
-      if (rowErr) throw new Error(rowErr.message)
-      setLibrary((prevEdit) => (prevEdit ?? []).filter((x) => x.id !== im.id))
-      setPreview((p) => (p === im.url ? null : p))
-    })
-
   const addFiles = (list: File[]) =>
     run(async () => {
       if (!list.length) return
@@ -144,7 +115,6 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
         .from('video_images')
         .insert(added.map((im, i) => ({ video_id: video.id, image_id: im.id, position: base + i })))
       if (error) throw new Error(error.message)
-      setLibrary((prev) => [...added, ...(prev ?? [])].slice(0, 300))
       setMsg('')
     })
 
@@ -156,17 +126,27 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
       onClose()
     })
 
+  const pickReplace = (a: Attached) => {
+    setReplaceTarget(a)
+    replaceInputRef.current?.click()
+  }
+
+  const onReplacePicked = (file: File | undefined) => {
+    const target = replaceTarget
+    if (!file || !target) return
+    if (!confirm('নতুন ছবি দিয়ে বদলানো হবে? পুরনো ছবিটি স্টোরেজসহ মুছে যাবে।')) return
+    run(async () => {
+      await replaceLibraryImage(supabase, { imageId: target.imageId, path: target.path }, file)
+      setPreview((p) => (p === target.url ? null : p))
+      setReplaceTarget(null)
+    })
+  }
+
   return (
     <>
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-4"
-      onClick={() => !busy && onClose()}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[92dvh] w-full space-y-4 overflow-y-auto rounded-t-3xl border border-white/10 bg-neutral-900 p-5 sm:max-w-md sm:rounded-3xl"
-      >
-        <div className="flex items-start justify-between gap-3">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-4">
+      <div className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-neutral-900 sm:max-w-md sm:rounded-3xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 p-5 pb-4">
           <div className="min-w-0">
             <h2 className="text-lg font-bold">ভিডিও সম্পাদনা</h2>
             <p className="truncate text-xs text-neutral-500">{`/v/${video.slug}`}</p>
@@ -181,6 +161,8 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
             <X className="size-5" />
           </button>
         </div>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
 
         <div className="grid grid-cols-2 gap-3">
           <label className="block space-y-1.5 text-sm text-neutral-400">
@@ -260,10 +242,31 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
                   >
                     <X className="size-3.5" />
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => pickReplace(a)}
+                    disabled={busy}
+                    aria-label="ছবি বদলান"
+                    title="ছবি বদলান"
+                    className="absolute bottom-1 right-1 grid size-6 place-items-center rounded-full bg-black/75 text-white transition hover:text-blue-300 disabled:opacity-50"
+                  >
+                    <Repeat className="size-3.5" />
+                  </button>
                 </div>
               ))}
             </div>
           )}
+
+          <input
+            ref={replaceInputRef}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(e) => {
+              onReplacePicked(e.target.files?.[0])
+              e.target.value = ''
+            }}
+          />
 
           <label className={`${btnGhost} w-full cursor-pointer ${busy ? 'pointer-events-none opacity-50' : ''}`}>
             <ImagePlus className="size-4" />
@@ -279,70 +282,6 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
               }}
             />
           </label>
-
-          <div className="space-y-2">
-            <div className="mb-1 text-xs text-neutral-500">
-              লাইব্রেরি — আপলোড করা সব ছবি এখানে জমা থাকে। ছবিতে ক্লিক করলে এই ভিডিওতে যুক্ত/বাদ হবে (নীল ডোরা = যুক্ত)। চোখে বড় দেখা, ট্র্যাশে মুছুন।
-            </div>
-            {library === null ? (
-              <div className="flex justify-center py-4">
-                <Loader2 className="size-4 animate-spin text-neutral-500" />
-              </div>
-            ) : library.length > 0 ? (
-              <div className="grid grid-cols-4 gap-2">
-                {library.map((im) => {
-                  const link = (video.video_images ?? []).find((l) => l.image_id === im.id)
-                  return (
-                    <div
-                      key={im.id}
-                      className={`relative aspect-[3/4] overflow-hidden rounded-lg bg-black transition ${link ? 'ring-2 ring-blue-500' : 'ring-1 ring-white/10 hover:ring-blue-500'} ${busy ? 'opacity-60' : ''}`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={im.url} alt="" loading="lazy" className="pointer-events-none size-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => (link ? detach(link.id) : attach(im))}
-                        disabled={busy}
-                        className="absolute inset-0"
-                        title={link ? 'ভিডিও থেকে বাদ দিন' : 'এই ভিডিওতে যুক্ত করুন'}
-                        aria-label={link ? 'ভিডিও থেকে বাদ দিন' : 'এই ভিডিওতে যুক্ত করুন'}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setPreview(im.url)}
-                        disabled={busy}
-                        className="absolute left-1 top-1 grid size-6 place-items-center rounded-full bg-black/75 text-white transition hover:text-blue-300 disabled:opacity-50"
-                        title="বড় করে দেখুন"
-                        aria-label="বড় করে দেখুন"
-                      >
-                        <Eye className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => delImage(im)}
-                        disabled={busy}
-                        className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/75 text-white transition hover:text-red-400 disabled:opacity-50"
-                        title="লাইব্রেরি থেকে মুছুন"
-                        aria-label="লাইব্রেরি থেকে মুছুন"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                      {link && (
-                        <span
-                          className="absolute bottom-1 left-1 grid size-5 place-items-center rounded-full bg-blue-600 text-white"
-                          title="এই ভিডিওতে যুক্ত আছে"
-                        >
-                          <Check className="size-3" />
-                        </span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <p className="text-xs text-neutral-500">লাইব্রেরি খালি — উপরের বাটন থেকে ছবি আপলোড করুন।</p>
-            )}
-          </div>
         </div>
 
         <button onClick={delVideo} disabled={busy} className={`${btnDanger} w-full`}>
@@ -352,6 +291,7 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
 
         {error && <p className="text-sm text-red-400">{error}</p>}
         {msg && <p className="text-sm text-neutral-400">{msg}</p>}
+        </div>
       </div>
     </div>
 
@@ -371,7 +311,7 @@ export default function EditVideoModal({ video, onClose, onChange }: Props) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={preview}
-          alt="লাইব্রেরির ছবি"
+          alt="ক্লাসের ছবি"
           className="max-h-[88dvh] max-w-[94vw] rounded-xl bg-black object-contain"
           onClick={(e) => e.stopPropagation()}
         />

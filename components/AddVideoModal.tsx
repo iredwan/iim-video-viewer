@@ -30,15 +30,12 @@ export default function AddVideoModal({ nextClass, defaultKey, onClose, onAdded 
   useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onClose()
-    window.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
-      window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
-  }, [busy, onClose])
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -85,27 +82,25 @@ export default function AddVideoModal({ nextClass, defaultKey, onClose, onAdded 
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-4"
-      onClick={() => !busy && onClose()}
-    >
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-4">
       <form
         onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[92dvh] w-full space-y-4 overflow-y-auto rounded-t-3xl border border-white/10 bg-neutral-900 p-5 sm:max-w-md sm:rounded-3xl"
+        className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-neutral-900 sm:max-w-md sm:rounded-3xl"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 p-5 pb-4">
           <h2 className="text-lg font-bold">নতুন ভিডিও যুক্ত করুন</h2>
           <button
             type="button"
             onClick={onClose}
             disabled={busy}
             aria-label="বন্ধ করুন"
-            className="inline-flex size-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/10"
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/10"
           >
             <X className="size-5" />
           </button>
         </div>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
 
         <div className="grid grid-cols-2 gap-3">
           <label className="block space-y-1.5 text-sm text-neutral-400">
@@ -199,6 +194,7 @@ export default function AddVideoModal({ nextClass, defaultKey, onClose, onAdded 
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
           {busy ? 'অপেক্ষা করুন…' : 'যুক্ত করুন'}
         </button>
+        </div>
       </form>
     </div>
   )
